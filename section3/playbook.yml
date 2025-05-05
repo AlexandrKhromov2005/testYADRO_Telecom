@@ -1,0 +1,68 @@
+---
+- name: Установка Docker и запуск контейнера
+  hosts: target_hosts
+  become: yes
+  tasks:
+    - name: Установка системных пакетов
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - apt-transport-https
+        - ca-certificates
+        - curl
+        - software-properties-common
+
+    - name: Скачивание Docker GPG-ключа
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /usr/share/keyrings/docker-archive-keyring.gpg
+        mode: '0644'
+
+    - name: Добавление Docker-репозитория
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu noble stable"
+        state: present
+        filename: docker-ce
+
+    - name: Установка Docker CE
+      apt:
+        name: docker-ce
+        state: present
+        update_cache: yes
+
+    - name: Добавление пользователя в группу docker
+      user:
+        name: "{{ ansible_user_id }}"
+        groups: docker
+        append: yes
+
+    - name: Запуск и включение Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Сборка образа из Dockerfile
+      community.docker.docker_image:
+        name: http-checker
+        source: build
+        build:
+          path: ../
+          dockerfile: section2/Dockerfile
+
+    - name: Запуск контейнера
+      community.docker.docker_container:
+        name: http-checker
+        image: http-checker
+        state: started
+        detach: false
+
+    - name: Получение логов контейнера
+      command: docker logs http-checker
+      register: container_logs
+      changed_when: false
+
+    - name: Вывод логов
+      debug:
+        var: container_logs.stdout_lines
